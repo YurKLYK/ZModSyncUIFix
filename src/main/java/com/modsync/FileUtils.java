@@ -27,6 +27,7 @@ public final class FileUtils {
     public static Path resolveServerSourceRoot(CategoryType category) {
         return switch (category) {
             case MOD -> gameDir().resolve("mods").normalize();
+            case TACZ -> gameDir().resolve("tacz").normalize();
             case RESOURCEPACK, SHADERPACK, CONFIG, OPTIONAL_CLIENT ->
                     gameDir().resolve("sync_repo").resolve(category.getRepositoryFolder()).normalize();
         };
@@ -36,7 +37,7 @@ public final class FileUtils {
         Path syncRoot = gameDir().resolve("sync_repo").normalize();
         Files.createDirectories(syncRoot);
         for (CategoryType category : CategoryType.values()) {
-            if (!ConfigManager.isCategoryEnabled(category) || category == CategoryType.MOD) {
+            if (!ConfigManager.isCategoryEnabled(category) || category == CategoryType.MOD || category == CategoryType.TACZ) {
                 continue;
             }
             Files.createDirectories(resolveServerSourceRoot(category));
@@ -53,6 +54,7 @@ public final class FileUtils {
             case RESOURCEPACK -> gameDir().resolve("resourcepacks").normalize();
             case SHADERPACK -> gameDir().resolve("shaderpacks").normalize();
             case MOD -> rootModsDir();
+            case TACZ -> gameDir().resolve("tacz").normalize();
             case OPTIONAL_CLIENT -> resolveSafeChild(gameDir(), ConfigManager.optionalClientTarget());
         };
     }

@@ -25,6 +25,7 @@ public final class ConfigManager {
     private static final ForgeConfigSpec.BooleanValue ENABLE_SHADERPACKS_SYNC;
     private static final ForgeConfigSpec.BooleanValue ENABLE_CONFIG_SYNC;
     private static final ForgeConfigSpec.BooleanValue ENABLE_OPTIONAL_CLIENT_SYNC;
+    private static final ForgeConfigSpec.BooleanValue ENABLE_TACZ_SYNC;
     private static final ForgeConfigSpec.ConfigValue<String> OPTIONAL_CLIENT_TARGET;
     private static final ForgeConfigSpec.IntValue DOWNLOAD_THREADS;
     private static final ForgeConfigSpec.IntValue RETRY_COUNT;
@@ -53,6 +54,7 @@ public final class ConfigManager {
         ENABLE_SHADERPACKS_SYNC = builder.define("enable_shaderpacks_sync", true);
         ENABLE_CONFIG_SYNC = builder.define("enable_config_sync", true);
         ENABLE_OPTIONAL_CLIENT_SYNC = builder.define("enable_optional_client_sync", true);
+        ENABLE_TACZ_SYNC = builder.define("enable_tacz_sync", true);
         OPTIONAL_CLIENT_TARGET = builder.define("optional_client_target", "mods");
 
         DOWNLOAD_THREADS = builder.defineInRange("download_threads", 4, 1, 16);
@@ -73,7 +75,8 @@ public final class ConfigManager {
                         "sync_repo/resourcepacks",
                         "sync_repo/shaderpacks",
                         "sync_repo/configs",
-                        "sync_repo/optional_client"
+                    "sync_repo/optional_client",
+                    "tacz"
                 ), value -> value instanceof String);
 
         LOG_TO_FILE = builder.define("log_to_file", true);
@@ -118,6 +121,7 @@ public final class ConfigManager {
             case SHADERPACK -> ENABLE_SHADERPACKS_SYNC.get();
             case CONFIG -> ENABLE_CONFIG_SYNC.get();
             case OPTIONAL_CLIENT -> ENABLE_OPTIONAL_CLIENT_SYNC.get();
+            case TACZ -> ENABLE_TACZ_SYNC.get();
         };
     }
 
@@ -199,6 +203,7 @@ public final class ConfigManager {
             ENABLE_SHADERPACKS_SYNC.set(fileConfig.getOrElse("enable_shaderpacks_sync", ENABLE_SHADERPACKS_SYNC.get()));
             ENABLE_CONFIG_SYNC.set(fileConfig.getOrElse("enable_config_sync", ENABLE_CONFIG_SYNC.get()));
             ENABLE_OPTIONAL_CLIENT_SYNC.set(fileConfig.getOrElse("enable_optional_client_sync", ENABLE_OPTIONAL_CLIENT_SYNC.get()));
+            ENABLE_TACZ_SYNC.set(fileConfig.getOrElse("enable_tacz_sync", ENABLE_TACZ_SYNC.get()));
             OPTIONAL_CLIENT_TARGET.set(fileConfig.getOrElse("optional_client_target", OPTIONAL_CLIENT_TARGET.get()));
             DOWNLOAD_THREADS.set(fileConfig.getOrElse("download_threads", DOWNLOAD_THREADS.get()));
             RETRY_COUNT.set(fileConfig.getOrElse("retry_count", RETRY_COUNT.get()));

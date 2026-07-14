@@ -7,7 +7,8 @@ public enum CategoryType {
     RESOURCEPACK("resourcepacks", "resourcepacks", false),
     SHADERPACK("shaderpacks", "shaderpacks", false),
     CONFIG("configs", "config", false),
-    OPTIONAL_CLIENT("optional_client", "mods", true);
+    OPTIONAL_CLIENT("optional_client", "mods", true),
+    TACZ("tacz", "tacz", false);
 
     private final String repositoryFolder;
     private final String clientFolder;
@@ -42,5 +43,18 @@ public enum CategoryType {
             }
         }
         throw new IllegalArgumentException("Unknown category segment: " + value);
+    }
+
+    public static CategoryType fromRepositoryFolder(String folderName) {
+        if (folderName == null || folderName.isBlank()) {
+            return null;
+        }
+        String normalized = folderName.toLowerCase(Locale.ROOT).trim();
+        for (CategoryType type : values()) {
+            if (type.repositoryFolder.equalsIgnoreCase(normalized) || type.clientFolder.equalsIgnoreCase(normalized)) {
+                return type;
+            }
+        }
+        return null;
     }
 }

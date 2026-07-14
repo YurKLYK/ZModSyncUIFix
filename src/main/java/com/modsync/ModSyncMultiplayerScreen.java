@@ -18,36 +18,44 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Cleaned Vanilla-style multiplayer screen with ModSync Integration.
+ * Optimized rendering layers to prevent buttons from being darkened by overlays.
+ */
 public class ModSyncMultiplayerScreen extends Screen {
-    private static final int PANEL_WIDTH = 214;
-    private static final int FOOTER_HEIGHT = 36;
-    private static final int LIST_TOP = 44;
-    private static final int ROW_HEIGHT = 54;
-    private static final int ICON_SIZE = 32;
+    private static final int LIST_TOP = 32;
+    private static final int ROW_HEIGHT = 40; 
+    private static final int ICON_SIZE = 24;
     private static final int LIST_SIDE_PADDING = 6;
     private static final int LIST_SCROLLBAR_WIDTH = 6;
+    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_SPACING = 4;
+    private static final int BOTTOM_MARGIN = 8;
+    private static final int LIST_TO_BUTTONS_GAP = 18;
     private static final Map<String, IconTexture> ICON_CACHE = new ConcurrentHashMap<>();
 
     private final Screen parent;
+
+    private int listLeft;
+    private int listWidth;
+    private int listRight;
+    private int listBottom;
 
     private ServerList serverList;
     private ServerStatusPinger pinger;
     private ServerBrowserList listWidget;
 
+    // ボタン配置
     private Button connectButton;
-    private Button downloadButton;
+    private Button downloadButton; 
+    private Button directButton;
+    private Button addButton;
     private Button editButton;
     private Button deleteButton;
-    private Button upButton;
-    private Button downButton;
     private Button refreshButton;
-    private Button addButton;
-    private Button directButton;
     private Button backButton;
 
     public ModSyncMultiplayerScreen(Screen parent) {
@@ -66,65 +74,91 @@ public class ModSyncMultiplayerScreen extends Screen {
             pinger = new ServerStatusPinger();
         }
 
+        String selectedIp = null;
+        if (listWidget != null && listWidget.getSelected() != null) {
+            selectedIp = listWidget.getSelected().serverData.ip;
+        }
+
         buildLayout();
-        reloadEntries(null);
+        reloadEntries(selectedIp);
     }
 
+    /**
+     * ボタンレイアウトの構築
+     */
     private void buildLayout() {
         clearWidgets();
 
-        int listWidth = Math.max(250, width - PANEL_WIDTH - 52);
-        int listLeft = 24;
-        int listRight = listLeft + listWidth;
-        int listBottom = height - FOOTER_HEIGHT - 14;
+        listLeft = 24;
+        listWidth = Math.max(260, width - 48);
+        listRight = listLeft + listWidth;
 
-        listWidget = new ServerBrowserList(minecraft, listWidth, listBottom - LIST_TOP, LIST_TOP, listBottom, ROW_HEIGHT, listLeft);
+        int row2Y = height - BOTTOM_MARGIN - BUTTON_HEIGHT; 
+        int row1Y = row2Y - BUTTON_SPACING - BUTTON_HEIGHT; 
+
+        listBottom = row1Y - LIST_TO_BUTTONS_GAP;
+
+        int listHeight = Math.max(80, listBottom - LIST_TOP);
+        listWidget = new ServerBrowserList(minecraft, listWidth, listHeight, LIST_TOP, listBottom, ROW_HEIGHT, listLeft);
         addRenderableWidget(listWidget);
 
-        int panelX = listRight + 18;
-        int buttonWidth = PANEL_WIDTH - 20;
-        int y = LIST_TOP;
+        int buttonSpacing = 4;
+
+        // --- 1段目: 4つのボタン (Join, Download Mods, Direct, Add) ---
+        int row1ButtonCount = 4;
+        int row1TotalSpacing = buttonSpacing * (row1ButtonCount - 1);
+        int row1BtnW = (listWidth - row1TotalSpacing) / row1ButtonCount;
+        row1BtnW = Math.min(100, row1BtnW);
+        int row1StartX = (width - (row1BtnW * row1ButtonCount + row1TotalSpacing)) / 2;
 
         connectButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.select"), button -> connectSelected())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 24;
-        downloadButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.download_button"), button -> downloadSelected())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 24;
-        refreshButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.refresh"), button -> refreshServers())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 32;
-        addButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.add"), button -> addServer())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 24;
+            .bounds(row1StartX, row1Y, row1BtnW, BUTTON_HEIGHT)
+            .build());
+
+        downloadButton = addRenderableWidget(Button.builder(Component.translatable("modsync.download_button").copy().withStyle(ChatFormatting.GOLD), button -> downloadSelected())
+            .bounds(row1StartX + (row1BtnW + buttonSpacing), row1Y, row1BtnW, BUTTON_HEIGHT)
+            .build());
+
         directButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.direct"), button -> directConnect())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 24;
+            .bounds(row1StartX + (row1BtnW + buttonSpacing) * 2, row1Y, row1BtnW, BUTTON_HEIGHT)
+            .build());
+
+        addButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.add"), button -> addServer())
+            .bounds(row1StartX + (row1BtnW + buttonSpacing) * 3, row1Y, row1BtnW, BUTTON_HEIGHT)
+            .build());
+
+
+        // --- 2段目: 4つのボタン (Edit, Delete, Refresh, Back) ---
+        int row2ButtonCount = 4;
+        int row2TotalSpacing = buttonSpacing * (row2ButtonCount - 1);
+        int row2BtnW = (listWidth - row2TotalSpacing) / row2ButtonCount;
+        row2BtnW = Math.min(100, row2BtnW);
+        int row2StartX = (width - (row2BtnW * row2ButtonCount + row2TotalSpacing)) / 2;
+
         editButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.edit"), button -> editSelected())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 24;
+            .bounds(row2StartX, row2Y, row2BtnW, BUTTON_HEIGHT)
+            .build());
+
         deleteButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.delete"), button -> deleteSelected())
-                .bounds(panelX, y, buttonWidth, 20)
-                .build());
-        y += 24;
-        upButton = addRenderableWidget(Button.builder(Component.literal("^"), button -> moveSelected(-1))
-                .bounds(panelX, y, buttonWidth / 2 - 2, 20)
-                .build());
-        downButton = addRenderableWidget(Button.builder(Component.literal("v"), button -> moveSelected(1))
-                .bounds(panelX + buttonWidth / 2 + 2, y, buttonWidth / 2 - 2, 20)
-                .build());
+            .bounds(row2StartX + (row2BtnW + buttonSpacing), row2Y, row2BtnW, BUTTON_HEIGHT)
+            .build());
+
+        refreshButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.refresh"), button -> refreshServers())
+            .bounds(row2StartX + (row2BtnW + buttonSpacing) * 2, row2Y, row2BtnW, BUTTON_HEIGHT)
+            .build());
 
         backButton = addRenderableWidget(Button.builder(Component.translatable("gui.back"), button -> onClose())
-                .bounds(panelX, height - 30, buttonWidth, 20)
-                .build());
+            .bounds(row2StartX + (row2BtnW + buttonSpacing) * 3, row2Y, row2BtnW, BUTTON_HEIGHT)
+            .build());
 
         updateButtons();
+    }
+
+    @Override
+    public void resize(Minecraft minecraft, int width, int height) {
+        this.width = width;
+        this.height = height;
+        this.init(minecraft, width, height);
     }
 
     private void reloadEntries(String selectedIp) {
@@ -173,6 +207,7 @@ public class ModSyncMultiplayerScreen extends Screen {
     }
 
     private void connectSelected() {
+        if (listWidget == null) return;
         ServerEntry entry = listWidget.getSelected();
         if (entry == null) {
             return;
@@ -182,6 +217,7 @@ public class ModSyncMultiplayerScreen extends Screen {
     }
 
     private void downloadSelected() {
+        if (listWidget == null) return;
         ServerEntry entry = listWidget.getSelected();
         if (entry == null) {
             return;
@@ -215,6 +251,7 @@ public class ModSyncMultiplayerScreen extends Screen {
     }
 
     private void editSelected() {
+        if (listWidget == null) return;
         ServerEntry entry = listWidget.getSelected();
         if (entry == null) {
             return;
@@ -234,6 +271,7 @@ public class ModSyncMultiplayerScreen extends Screen {
     }
 
     private void deleteSelected() {
+        if (listWidget == null) return;
         ServerEntry entry = listWidget.getSelected();
         if (entry == null) {
             return;
@@ -242,22 +280,6 @@ public class ModSyncMultiplayerScreen extends Screen {
         serverList.remove(entry.serverData);
         serverList.save();
         reloadEntries(null);
-    }
-
-    private void moveSelected(int direction) {
-        ServerEntry entry = listWidget.getSelected();
-        if (entry == null) {
-            return;
-        }
-
-        int target = entry.index + direction;
-        if (target < 0 || target >= serverList.size()) {
-            return;
-        }
-
-        serverList.swap(entry.index, target);
-        serverList.save();
-        reloadEntries(entry.serverData.ip);
     }
 
     private void openEditor(ServerData serverData, BooleanConsumer consumer) {
@@ -275,8 +297,6 @@ public class ModSyncMultiplayerScreen extends Screen {
         downloadButton.active = hasSelection;
         editButton.active = hasSelection;
         deleteButton.active = hasSelection;
-        upButton.active = hasSelection && entry.index > 0;
-        downButton.active = hasSelection && entry.index < serverList.size() - 1;
     }
 
     @Override
@@ -297,72 +317,39 @@ public class ModSyncMultiplayerScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // 1. 背景(Dirt)
         renderBackground(guiGraphics);
 
-        int listWidth = Math.max(250, width - PANEL_WIDTH - 52);
-        int listLeft = 24;
-        int listRight = listLeft + listWidth;
-        int listBottom = height - FOOTER_HEIGHT - 14;
-        int panelX = listRight + 18;
+        // 2. サーバーリスト背後の透過ボックス
+        guiGraphics.fill(listLeft - 2, LIST_TOP - 2, listRight + 2, listBottom + 2, 0x80000000);
 
-        guiGraphics.drawCenteredString(font, title, width / 2, 16, 0xFFFFFF);
-
-        guiGraphics.fill(listLeft - 4, LIST_TOP - 4, listRight + 4, listBottom + 4, 0x66101010);
-        guiGraphics.fill(panelX - 6, LIST_TOP - 4, width - 18, height - 10, 0x66101010);
+        // 3. 中央タイトル
+        guiGraphics.drawCenteredString(font, title, width / 2, 12, 0xFFFFFF);
 
         if (serverList.size() == 0) {
-            guiGraphics.drawCenteredString(font, LanguageManager.component("modsync.multiplayer.empty"), listLeft + listWidth / 2, height / 2 - 20, 0xCFCFCF);
+            guiGraphics.drawCenteredString(font, LanguageManager.component("modsync.multiplayer.empty"), width / 2, LIST_TOP + (listBottom - LIST_TOP) / 2 - 10, 0xCFCFCF);
         }
 
+        // 4. 先にリスト単体の中身（スクロールされるサーバー項目群）を描画
+        if (listWidget != null) {
+            listWidget.render(guiGraphics, mouseX, mouseY, partialTick);
+        }
+
+        // 5. 【ココが重要】上下の暗転グラデーションを「ボタンより奥」に描画
+        guiGraphics.fillGradient(0, 0, width, LIST_TOP, 0xFF000000, 0x00000000);
+        guiGraphics.fillGradient(0, listBottom, width, height, 0x00000000, 0xFF000000);
+
+        // 6. 最後に super.render を呼ぶことで、すべての登録ボタンが一番手前のレイヤーに「明るく」描画されます
         super.render(guiGraphics, mouseX, mouseY, partialTick);
-        drawDetails(guiGraphics, panelX);
-    }
-
-    private void drawDetails(GuiGraphics guiGraphics, int panelX) {
-        ServerEntry entry = listWidget.getSelected();
-        int contentX = panelX + 8;
-        int y = downButton.getY() + downButton.getHeight() + 14;
-        int maxWidth = PANEL_WIDTH - 34;
-
-        guiGraphics.drawString(font, LanguageManager.component("modsync.multiplayer.details"), contentX, y, 0xFFFFFF, false);
-        y += 16;
-
-        if (entry == null) {
-            guiGraphics.drawString(font, LanguageManager.component("modsync.multiplayer.no_selection"), contentX, y, 0xAFAFAF, false);
-            return;
-        }
-
-        ServerData serverData = entry.serverData;
-        ServerSyncStatusCache.SyncState state = ServerSyncStatusCache.getStatus(serverData);
-
-        guiGraphics.drawString(font, trim(serverData.name, maxWidth), contentX, y, 0xFFFFFF, false);
-        y += 12;
-        guiGraphics.drawString(font, trim(serverData.ip, maxWidth), contentX, y, 0x9F9F9F, false);
-        y += 16;
-        y = drawDetailValue(guiGraphics, contentX, y, LanguageManager.component("modsync.multiplayer.ping"), formatPing(serverData), 0xFFFFFF);
-        y = drawDetailValue(guiGraphics, contentX, y, LanguageManager.component("modsync.multiplayer.version"), trim(formatVersion(serverData), maxWidth), 0xFFFFFF);
-        y = drawDetailValue(guiGraphics, contentX, y, LanguageManager.component("modsync.multiplayer.sync"), statusText(state), statusTextColor(state));
-        for (FormattedLine line : wrapDescription(serverData, maxWidth)) {
-            guiGraphics.drawString(font, line.text, contentX, y, line.color, false);
-            y += 10;
-            if (y > backButton.getY() - 14) {
-                break;
-            }
-        }
-    }
-
-    private int drawDetailValue(GuiGraphics guiGraphics, int x, int y, Component label, String value, int valueColor) {
-        guiGraphics.drawString(font, label, x, y, 0xD7D7D7, false);
-        y += 10;
-        guiGraphics.drawString(font, trim(value, PANEL_WIDTH - 42), x + 8, y, valueColor, false);
-        return y + 16;
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == 257 || keyCode == 335) {
-            connectSelected();
-            return true;
+            if (connectButton != null && connectButton.active) {
+                connectSelected();
+                return true;
+            }
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
@@ -393,48 +380,12 @@ public class ModSyncMultiplayerScreen extends Screen {
         return text == null || text.isBlank() ? "--" : text;
     }
 
-    private static String formatDescription(ServerData serverData) {
-        if (serverData.status != null && !serverData.status.getString().isBlank()) {
-            return serverData.status.getString();
-        }
-        if (serverData.motd != null && !serverData.motd.getString().isBlank()) {
-            return serverData.motd.getString();
-        }
-        return "";
-    }
-
-    private List<FormattedLine> wrapDescription(ServerData serverData, int maxWidth) {
-        List<FormattedLine> lines = new ArrayList<>();
-        boolean hasStatus = serverData.status != null && !serverData.status.getString().isBlank();
-        int color = hasStatus ? 0xE36A6A : 0xBFBFBF;
-        String text = formatDescription(serverData);
-        int chunkWidth = Math.max(24, maxWidth);
-        while (!text.isEmpty()) {
-            String line = font.plainSubstrByWidth(text, chunkWidth);
-            if (line.isEmpty()) {
-                break;
-            }
-            lines.add(new FormattedLine(line, color));
-            text = text.substring(line.length()).stripLeading();
-        }
-        return lines;
-    }
-
     private static int statusColor(ServerSyncStatusCache.SyncState state) {
         return switch (state) {
             case UNKNOWN -> 0xFF3A3A3A;
-            case SYNCED -> 0xFF275D37;
-            case OUTDATED, ERROR -> 0xFF7A2626;
-            case CHECKING -> 0xFF6B612D;
-        };
-    }
-
-    private static int statusTextColor(ServerSyncStatusCache.SyncState state) {
-        return switch (state) {
-            case UNKNOWN -> 0xB8B8B8;
-            case SYNCED -> 0x84F0A1;
-            case OUTDATED, ERROR -> 0xFF8A8A;
-            case CHECKING -> 0xF0DE84;
+            case SYNCED -> 0xFF275D37; 
+            case OUTDATED, ERROR -> 0xFF7A2626; 
+            case CHECKING -> 0xFF6B612D; 
         };
     }
 
@@ -446,19 +397,6 @@ public class ModSyncMultiplayerScreen extends Screen {
             case ERROR -> "ERR";
             case CHECKING -> "...";
         };
-    }
-
-    private static String statusText(ServerSyncStatusCache.SyncState state) {
-        return switch (state) {
-            case UNKNOWN -> LanguageManager.get("modsync.status.unknown");
-            case SYNCED -> LanguageManager.get("modsync.status.synced");
-            case OUTDATED -> LanguageManager.get("modsync.status.outdated");
-            case ERROR -> LanguageManager.get("modsync.status.error");
-            case CHECKING -> LanguageManager.get("modsync.status.checking");
-        };
-    }
-
-    private record FormattedLine(String text, int color) {
     }
 
     private final class ServerBrowserList extends ObjectSelectionList<ServerEntry> {
@@ -509,72 +447,68 @@ public class ModSyncMultiplayerScreen extends Screen {
 
         @Override
         public void render(GuiGraphics guiGraphics, int index, int top, int left, int rowWidth, int rowHeight, int mouseX, int mouseY, boolean hovered, float partialTick) {
-            boolean selected = listWidget.getSelected() == this;
-            int border = selected ? 0xFFDFC684 : 0xFF303030;
-            int background = hovered ? 0xB01A1A1A : 0x90101010;
-            guiGraphics.fill(left, top, left + rowWidth, top + rowHeight - 2, background);
-            guiGraphics.fill(left, top, left + rowWidth, top + 1, border);
-            guiGraphics.fill(left, top + rowHeight - 3, left + rowWidth, top + rowHeight - 2, border);
-            guiGraphics.fill(left, top, left + 1, top + rowHeight - 2, border);
-            guiGraphics.fill(left + rowWidth - 1, top, left + rowWidth, top + rowHeight - 2, border);
-
-            ServerSyncStatusCache.SyncState syncState = ServerSyncStatusCache.getStatus(serverData);
-            int badgeWidth = 30;
-            int badgeX = left + rowWidth - badgeWidth - 18;
-            int badgeY = top + 8;
-            guiGraphics.fill(badgeX, badgeY, badgeX + badgeWidth, badgeY + 14, statusColor(syncState));
-            guiGraphics.drawCenteredString(font, statusBadge(syncState), badgeX + badgeWidth / 2, badgeY + 3, 0xFFFFFF);
-
-            int metaRight = badgeX - 18;
-            String pingText = formatPing(serverData);
-            String versionText = trim(formatVersion(serverData), 96);
-            int pingX = metaRight - font.width(pingText);
-            int versionX = metaRight - font.width(versionText);
-            guiGraphics.drawString(font, pingText, pingX, top + 8, 0xD7D7D7, false);
-            guiGraphics.drawString(font, versionText, versionX, top + 22, 0x9F9F9F, false);
-
-            int iconX = left + 10;
-            int iconY = top + 10;
+            if (listWidget == null) return;
+            
+            int iconX = left + 2;
+            int iconY = top + (rowHeight - ICON_SIZE) / 2 - 1;
             drawServerIcon(guiGraphics, serverData, iconX, iconY);
 
-            int textLeft = iconX + ICON_SIZE + 10;
-            int textWidth = rowWidth - 212;
-            guiGraphics.drawString(font, trim(serverData.name, textWidth), textLeft, top + 8, 0xFFFFFF, false);
-            guiGraphics.drawString(font, trim(serverData.ip, textWidth), textLeft, top + 22, 0xA6A6A6, false);
+            int textLeft = iconX + ICON_SIZE + 8;
+            int rightAlignWidth = 80;
+            int textWidth = rowWidth - ICON_SIZE - rightAlignWidth - 16;
 
-            String desc = trim(formatDescription(serverData), textWidth);
-            if (!desc.isBlank()) {
-                int descColor = serverData.status != null && !serverData.status.getString().isBlank() ? 0xE36A6A : 0xBFBFBF;
-                guiGraphics.drawString(font, desc, textLeft, top + 36, descColor, false);
+            guiGraphics.drawString(font, trim(serverData.name, textWidth), textLeft, top + 3, 0xFFFFFF, false);
+            
+            String motd = serverData.motd != null ? serverData.motd.getString() : "";
+            if (motd.isBlank()) {
+                motd = serverData.ip;
             }
+            guiGraphics.drawString(font, trim(motd, textWidth), textLeft, top + 15, 0x808080, false);
+
+            ServerSyncStatusCache.SyncState syncState = ServerSyncStatusCache.getStatus(serverData);
+            int badgeWidth = 24;
+            int badgeHeight = 11;
+            int badgeX = left + rowWidth - badgeWidth - 6;
+            int badgeY = top + 4;
+            
+            guiGraphics.fill(badgeX, badgeY, badgeX + badgeWidth, badgeY + badgeHeight, statusColor(syncState));
+            guiGraphics.drawCenteredString(font, statusBadge(syncState), badgeX + badgeWidth / 2, badgeY + 2, 0xFFFFFF);
+
+            String pingText = formatPing(serverData);
+            String versionText = trim(formatVersion(serverData), 60);
+
+            int pingX = badgeX - font.width(pingText) - 6;
+            guiGraphics.drawString(font, pingText, pingX, top + 4, 0x808080, false);
+            
+            int versionX = left + rowWidth - font.width(versionText) - 6;
+            guiGraphics.drawString(font, versionText, versionX, top + 15, 0x606060, false);
         }
 
         @Override
         public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            listWidget.setSelected(this);
+            if (listWidget != null) {
+                listWidget.setSelected(this);
+            }
             updateButtons();
             return super.mouseClicked(mouseX, mouseY, button);
         }
 
         @Override
         public Component getNarration() {
-            ServerSyncStatusCache.SyncState state = ServerSyncStatusCache.getStatus(serverData);
-            return Component.literal(serverData.name + " " + statusText(state)).withStyle(ChatFormatting.WHITE);
+            return Component.literal(serverData.name).withStyle(ChatFormatting.WHITE);
         }
     }
 
     private void drawServerIcon(GuiGraphics guiGraphics, ServerData serverData, int x, int y) {
-        guiGraphics.fill(x - 1, y - 1, x + ICON_SIZE + 1, y + ICON_SIZE + 1, 0xFF202020);
-
         ResourceLocation texture = getServerIcon(serverData);
         if (texture != null) {
             guiGraphics.blit(texture, x, y, 0, 0, ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE);
             return;
         }
 
-        guiGraphics.fill(x, y, x + ICON_SIZE, y + ICON_SIZE, 0xFF2A2A2A);
+        guiGraphics.fill(x, y, x + ICON_SIZE, y + ICON_SIZE, 0xFF3C3C3C);
         String initials = initials(serverData.name);
-        guiGraphics.drawCenteredString(font, initials, x + ICON_SIZE / 2, y + 12, 0xD8D8D8);
+        guiGraphics.drawCenteredString(font, initials, x + ICON_SIZE / 2, y + (ICON_SIZE / 2 - 4), 0xCCCCCC);
     }
 
     private ResourceLocation getServerIcon(ServerData serverData) {
@@ -588,6 +522,10 @@ public class ModSyncMultiplayerScreen extends Screen {
         IconTexture cached = ICON_CACHE.get(key);
         if (cached != null && cached.hash == hash) {
             return cached.location;
+        }
+
+        if (cached != null) {
+            minecraft.getTextureManager().release(cached.location);
         }
 
         try {
