@@ -2,6 +2,7 @@
 
 日本語版readmeはこちら
 https://github.com/YurKLYK/ZModSyncUIFix/blob/main/README.ja.md
+
 ZModSync is a Forge 1.20.1 Minecraft mod that enables servers to distribute MODs and resource files to connecting clients.
 
 **Current Version**: 1.1.0
