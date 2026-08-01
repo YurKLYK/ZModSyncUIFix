@@ -37,3 +37,5 @@ client_mappings.txt
 
 # Keep Gradle wrapper
 !gradle/wrapper/gradle-wrapper.jar
+
+bin/
