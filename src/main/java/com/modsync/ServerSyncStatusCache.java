@@ -81,17 +81,19 @@ public final class ServerSyncStatusCache {
             return snapshot.entries;
         }
 
+        // Perform the scan outside any lock so the game thread isn't blocked by file I/O
+        List<ManifestEntry> entries = scanner.apply(normalizedServerId);
+        now = nowSupplier.getAsLong();
+
         synchronized (ServerSyncStatusCache.class) {
+            // Another thread may have cached a fresh result while we were scanning; prefer theirs
             snapshot = LOCAL_SCAN_BY_SERVER.get(normalizedServerId);
-            now = nowSupplier.getAsLong();
             if (snapshot != null && now - snapshot.timestamp <= LOCAL_SCAN_CACHE_MS) {
                 return snapshot.entries;
             }
-
-            List<ManifestEntry> entries = scanner.apply(serverId);
             LOCAL_SCAN_BY_SERVER.put(normalizedServerId, new LocalScanSnapshot(List.copyOf(entries), now));
-            return entries;
         }
+        return entries;
     }
 
     private static String normalizeServerId(String serverId) {

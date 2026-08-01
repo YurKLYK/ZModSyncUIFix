@@ -13,6 +13,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 
+import java.util.concurrent.CompletableFuture;
+
 @Mod(ModSync.MOD_ID)
 public class ModSync {
     public static final String MOD_ID = "modsync";
@@ -92,8 +94,9 @@ public class ModSync {
 
         visibleServerMotd = MotdMetadataCodec.stripHiddenMetadata(event.getServer().getMotd());
         updateServerMotdMetadata();
-        refreshManifest("server start");
         HttpFileServer.getInstance().start();
+        // Manifest generation hashes every file in the repository — run async to avoid stalling server startup
+        CompletableFuture.runAsync(() -> refreshManifest("server start"));
     }
 
     @SubscribeEvent

@@ -3,6 +3,7 @@ package com.modsync;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.util.Mth;
 
 import java.util.List;
 
@@ -11,19 +12,45 @@ public class SyncProgressScreen extends Screen {
     private static final int SCROLLBAR_WIDTH = 6;
     private static final int STATUS_BOX_HEIGHT = 44;
     private final Screen returnScreen;
+    /** When false, suppress auto-close so ConnectScreen can take over cleanly (pre-join flow). */
+    private final boolean autoClose;
+    /** Non-null in pre-join flow; shown when manifest fetch fails so the user can still connect. */
+    private final Runnable connectAnywayAction;
     private int logScroll;
     private Button backButton;
+    private Button connectAnywayButton;
+    private boolean autoCloseHandled;
 
     public SyncProgressScreen(Screen returnScreen) {
+        this(returnScreen, true, null);
+    }
+
+    public SyncProgressScreen(Screen returnScreen, boolean autoClose) {
+        this(returnScreen, autoClose, null);
+    }
+
+    public SyncProgressScreen(Screen returnScreen, boolean autoClose, Runnable connectAnywayAction) {
         super(LanguageManager.component("modsync.progress.title"));
         this.returnScreen = returnScreen;
+        this.autoClose = autoClose;
+        this.connectAnywayAction = connectAnywayAction;
     }
 
     @Override
     protected void init() {
-        backButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.back"), button -> onClose())
-                .bounds(width / 2 - 50, height - 40, 100, 20)
-                .build());
+        if (connectAnywayAction != null) {
+            backButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.back"), button -> onClose())
+                    .bounds(width / 2 - 104, height - 40, 100, 20)
+                    .build());
+            connectAnywayButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.connect_anyway"), button -> connectAnywayAction.run())
+                    .bounds(width / 2 + 4, height - 40, 100, 20)
+                    .build());
+            connectAnywayButton.visible = false;
+        } else {
+            backButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.back"), button -> onClose())
+                    .bounds(width / 2 - 50, height - 40, 100, 20)
+                    .build());
+        }
     }
 
     @Override
@@ -41,6 +68,18 @@ public class SyncProgressScreen extends Screen {
         );
         if (backButton != null) {
             backButton.active = !manager.isActive();
+        }
+        if (connectAnywayButton != null) {
+            connectAnywayButton.visible = (visualState == SyncProgressStateResolver.SyncProgressVisualState.FAILED);
+        }
+
+        // Nothing left to show the player: close automatically instead of leaving this
+        // screen sitting on top of the game (e.g. after a mid-game sync completes silently).
+        if (autoClose && !autoCloseHandled && !manager.isActive()
+                && visualState == SyncProgressStateResolver.SyncProgressVisualState.COMPLETE) {
+            autoCloseHandled = true;
+            onClose();
+            return;
         }
 
         int boxLeft = 40;
@@ -83,9 +122,28 @@ public class SyncProgressScreen extends Screen {
         guiGraphics.fill(left, top, left + 4, bottom, color);
 
         String titleText = statusTitle(visualState);
-        String detailText = statusDetail(manager, visualState);
         guiGraphics.drawString(font, titleText, left + 12, top + 9, 0xFFFFFF, false);
-        guiGraphics.drawString(font, font.plainSubstrByWidth(detailText, right - left - 24), left + 12, top + 23, 0xD0D0D0, false);
+
+        if (visualState == SyncProgressStateResolver.SyncProgressVisualState.DOWNLOADING && manager.getTotalTasks() > 0) {
+            renderProgressBar(guiGraphics, manager, left + 12, top + 23, right - 12);
+        } else {
+            String detailText = statusDetail(manager, visualState);
+            guiGraphics.drawString(font, font.plainSubstrByWidth(detailText, right - left - 24), left + 12, top + 23, 0xD0D0D0, false);
+        }
+    }
+
+    // Vanilla's own loading/download screens use this same bordered-bar convention
+    // (dark outline, gray track, filled portion) instead of plain text percentages.
+    private void renderProgressBar(GuiGraphics guiGraphics, DownloadManager manager, int left, int top, int right) {
+        int total = Math.max(1, manager.getTotalTasks());
+        float progress = Mth.clamp(manager.getCompletedTasks() / (float) total, 0.0F, 1.0F);
+        int barHeight = 9;
+        int filledRight = left + Math.round((right - left) * progress);
+
+        guiGraphics.fill(left - 1, top - 1, right + 1, top + barHeight + 1, 0xFF000000);
+        guiGraphics.fill(left, top, right, top + barHeight, 0xFF555555);
+        guiGraphics.fill(left, top, filledRight, top + barHeight, 0xFF80C080);
+        guiGraphics.drawCenteredString(font, manager.getCompletedTasks() + "/" + manager.getTotalTasks(), (left + right) / 2, top, 0xFFFFFF);
     }
 
     private String statusTitle(SyncProgressStateResolver.SyncProgressVisualState visualState) {

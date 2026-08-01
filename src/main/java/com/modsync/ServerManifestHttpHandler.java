@@ -71,8 +71,9 @@ public final class ServerManifestHttpHandler {
 
         for (String url : candidateUrls) {
             attemptedUrls.add(url);
+            java.net.HttpURLConnection connection = null;
             try {
-                java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                connection = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
                 connection.setConnectTimeout(connectTimeoutMs);
                 connection.setReadTimeout(readTimeoutMs);
                 connection.setRequestMethod("GET");
@@ -89,6 +90,10 @@ public final class ServerManifestHttpHandler {
                 }
             } catch (IOException exception) {
                 lastError = exception;
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
         }
 

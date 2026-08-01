@@ -10,8 +10,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +26,8 @@ public final class DownloadManager {
     private static final DownloadManager INSTANCE = new DownloadManager();
     private static final int DOWNLOAD_CONNECT_TIMEOUT_MS = 20_000;
     private static final int DOWNLOAD_READ_TIMEOUT_MS = 120_000;
+    private static final int DOWNLOAD_BUFFER_SIZE = 65536;
+    private static final long MIN_FREE_DISK_SPACE_BUFFER_BYTES = 200L * 1024 * 1024;
 
     private volatile ExecutorService executorService;
     private volatile int totalTasks;
@@ -69,6 +73,13 @@ public final class DownloadManager {
             if (completionAction != null) {
                 completionAction.run();
             }
+            return;
+        }
+
+        if (!hasSufficientDiskSpace(entries, targetResolver)) {
+            String message = buildInsufficientDiskSpaceMessage();
+            LoggerUtils.error(message, null);
+            SyncIssueState.set(message);
             return;
         }
 
@@ -144,12 +155,14 @@ public final class DownloadManager {
                                       boolean deleteInvalidFiles,
                                       boolean useTempFiles) {
         Exception lastFailure = null;
-        List<String> candidateUrls = resolveDownloadCandidateUrls(
+        // Local/direct URLs are tried first (fast LAN transfer). Modrinth's CDN is only
+        // consulted afterwards, as a genuine fallback, to avoid paying its network lookup
+        // cost on every file when the local server is already serving fine.
+        List<String> candidateUrls = ManifestUrlResolver.buildDownloadCandidateUrls(
                 task.getEntry(),
                 task.getEntry().getDownloadUrl(),
                 ClientSyncContext.getCurrentServerId(),
-                ClientSyncContext.getCurrentServerHttpPort(),
-                ModrinthApiClient::resolveDownloadUrlIfEnabled
+                ClientSyncContext.getCurrentServerHttpPort()
         );
         for (int i = 0; i <= retryCount; i++) {
             task.incrementAttempts();
@@ -166,6 +179,22 @@ public final class DownloadManager {
             LoggerUtils.warn("Download attempt " + task.getAttempts() + " failed for "
                     + task.getEntry().getRelativePath() + ": " + describeException(lastFailure));
         }
+
+        String modrinthUrl = ModrinthApiClient.resolveDownloadUrlIfEnabled(task.getEntry());
+        if (modrinthUrl != null && !modrinthUrl.isBlank()) {
+            task.incrementAttempts();
+            try {
+                download(task, modrinthUrl, verifyHashAfterDownload, deleteInvalidFiles, useTempFiles);
+                task.markCompleted();
+                LoggerUtils.info("Downloaded " + task.getEntry().getRelativePath() + " via Modrinth CDN fallback");
+                return true;
+            } catch (Exception exception) {
+                lastFailure = exception;
+                LoggerUtils.warn("Modrinth CDN fallback failed for " + task.getEntry().getRelativePath()
+                        + ": " + describeException(lastFailure));
+            }
+        }
+
         SyncIssueState.set(buildSingleDownloadFailureMessage(task.getEntry().getRelativePath(), lastFailure));
         return false;
     }
@@ -191,12 +220,23 @@ public final class DownloadManager {
 
         int responseCode = connection.getResponseCode();
         if (responseCode < 200 || responseCode >= 300) {
+            // Drain/close the error body so the underlying connection isn't left dangling
+            // when many candidate URLs are probed and rejected before a download succeeds.
+            try (InputStream errorStream = connection.getErrorStream()) {
+                if (errorStream != null) {
+                    errorStream.readAllBytes();
+                }
+            } catch (IOException ignored) {
+                // best-effort drain only
+            } finally {
+                connection.disconnect();
+            }
             throw new IOException("HTTP " + responseCode + " while downloading " + entry.getRelativePath());
         }
 
         try (InputStream inputStream = connection.getInputStream();
              OutputStream outputStream = Files.newOutputStream(downloadFile)) {
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[DOWNLOAD_BUFFER_SIZE];
             int read;
             while ((read = inputStream.read(buffer)) != -1) {
                 outputStream.write(buffer, 0, read);
@@ -218,6 +258,47 @@ public final class DownloadManager {
         return "Download step failed for " + failedDownloads + " file(s). Check the log panel for details.";
     }
 
+    static String buildInsufficientDiskSpaceMessage() {
+        return "Not enough free disk space to download the required files. Free up space and try again.";
+    }
+
+    // Guards against a manifest (malicious, misconfigured, or just very large) demanding more
+    // storage than is actually available, so a sync attempt fails fast instead of filling the disk.
+    static boolean hasSufficientDiskSpace(List<ManifestEntry> entries, Function<ManifestEntry, Path> targetResolver) {
+        Map<Path, Long> requiredBytesByStoreRoot = new HashMap<>();
+        for (ManifestEntry entry : entries) {
+            if (entry.getFileSize() <= 0) {
+                continue;
+            }
+            Path target = targetResolver.apply(entry);
+            Path storeRoot = nearestExistingAncestor(target.getParent());
+            requiredBytesByStoreRoot.merge(storeRoot, entry.getFileSize(), Long::sum);
+        }
+
+        for (Map.Entry<Path, Long> requirement : requiredBytesByStoreRoot.entrySet()) {
+            try {
+                long usable = Files.getFileStore(requirement.getKey()).getUsableSpace();
+                if (usable - MIN_FREE_DISK_SPACE_BUFFER_BYTES < requirement.getValue()) {
+                    LoggerUtils.warn("Insufficient disk space near " + requirement.getKey()
+                            + ": need " + requirement.getValue() + " bytes, have " + usable + " usable");
+                    return false;
+                }
+            } catch (IOException exception) {
+                LoggerUtils.warn("Unable to determine free disk space near " + requirement.getKey()
+                        + ": " + exception.getMessage());
+            }
+        }
+        return true;
+    }
+
+    private static Path nearestExistingAncestor(Path path) {
+        Path current = path;
+        while (current != null && !Files.exists(current)) {
+            current = current.getParent();
+        }
+        return current == null ? FileUtils.gameDir() : current;
+    }
+
     static String buildSingleDownloadFailureMessage(String relativePath, Exception exception) {
         return "Failed to download " + relativePath + ": " + describeException(exception);
     }
@@ -234,18 +315,18 @@ public final class DownloadManager {
                                                      int discoveredPort,
                                                      Function<ManifestEntry, String> modrinthResolver) {
         Set<String> urls = new LinkedHashSet<>();
-        if (modrinthResolver != null) {
-            String modrinthUrl = modrinthResolver.apply(entry);
-            if (modrinthUrl != null && !modrinthUrl.isBlank()) {
-                urls.add(modrinthUrl);
-            }
-        }
         urls.addAll(ManifestUrlResolver.buildDownloadCandidateUrls(
                 entry,
                 primaryDownloadUrl,
                 serverAddress,
                 discoveredPort
         ));
+        if (modrinthResolver != null) {
+            String modrinthUrl = modrinthResolver.apply(entry);
+            if (modrinthUrl != null && !modrinthUrl.isBlank()) {
+                urls.add(modrinthUrl);
+            }
+        }
         return new ArrayList<>(urls);
     }
 

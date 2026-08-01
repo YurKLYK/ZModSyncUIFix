@@ -97,7 +97,7 @@ class ManifestUrlResolverTest {
     }
 
     @Test
-    void resolveDownloadCandidateUrlsPrefersModrinthWhenResolverReturnsMatch() {
+    void resolveDownloadCandidateUrlsTriesLocalServerBeforeModrinthFallback() {
         ManifestEntry entry = new ManifestEntry(
                 CategoryType.MOD,
                 "mods/example.jar",
@@ -112,9 +112,9 @@ class ManifestUrlResolverTest {
 
         assertEquals(
                 List.of(
-                        "https://cdn.modrinth.com/data/example/example.jar",
                         "http://95.163.234.85:26590/files/mod/mods/example.jar",
-                        "http://127.0.0.1:26590/files/mod/mods/example.jar"
+                        "http://127.0.0.1:26590/files/mod/mods/example.jar",
+                        "https://cdn.modrinth.com/data/example/example.jar"
                 ),
                 DownloadManager.resolveDownloadCandidateUrls(
                         entry,

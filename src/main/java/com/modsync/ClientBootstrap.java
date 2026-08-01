@@ -7,6 +7,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public final class ClientBootstrap {
     record PostLoginSyncPlan(boolean skipHandshake,
@@ -31,10 +32,13 @@ public final class ClientBootstrap {
 
     public static void ensureProgressScreenVisible() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof SyncProgressScreen || minecraft.screen instanceof RestartScreen) {
-            return;
-        }
-        minecraft.setScreen(new SyncProgressScreen(minecraft.screen));
+        // Safe to call from any thread: execute() dispatches to game thread if needed
+        minecraft.execute(() -> {
+            if (minecraft.screen instanceof SyncProgressScreen || minecraft.screen instanceof RestartScreen) {
+                return;
+            }
+            minecraft.setScreen(new SyncProgressScreen(minecraft.screen));
+        });
     }
 
     public static final class ClientEvents {
@@ -61,9 +65,18 @@ public final class ClientBootstrap {
             if (plan.startHandshake()) {
                 LoggerUtils.info("Client connection established, starting sync handshake");
                 NetworkHandler.sendClientHello();
-                List<ManifestEntry> localFiles = ClientFileScanner.scanLocalFiles();
-                ServerSyncStatusCache.cacheLocalEntries(serverId, localFiles);
-                NetworkHandler.sendClientFileList(localFiles);
+                // Scan + hash all mod files off the game thread to avoid freezing the game on join.
+                final String serverIdCopy = serverId;
+                CompletableFuture.runAsync(() -> {
+                    List<ManifestEntry> localFiles = ClientFileScanner.scanLocalFiles();
+                    // Guard: if the player switched servers while we were scanning, discard results.
+                    if (!serverIdCopy.equals(ClientSyncContext.getCurrentServerId())) {
+                        LoggerUtils.info("Server changed during file scan, discarding stale file list for " + serverIdCopy);
+                        return;
+                    }
+                    ServerSyncStatusCache.cacheLocalEntries(serverIdCopy, localFiles);
+                    NetworkHandler.sendClientFileList(localFiles);
+                });
             }
         }
 

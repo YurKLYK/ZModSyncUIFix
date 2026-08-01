@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
@@ -16,6 +17,7 @@ import java.util.concurrent.Executors;
 
 public final class HttpFileServer {
     private static final HttpFileServer INSTANCE = new HttpFileServer();
+    private static final int TRANSFER_BUFFER_SIZE = 65536;
 
     private final Map<String, ManifestEntry> approvedEntries = new ConcurrentHashMap<>();
     private HttpServer server;
@@ -31,6 +33,13 @@ public final class HttpFileServer {
     public synchronized void start() {
         if (!ConfigManager.enableHttpServer() || server != null) {
             return;
+        }
+
+        // The JDK's built-in HttpServer leaves TCP_NODELAY off by default, which combined with
+        // delayed ACKs can stall file transfers for tens/hundreds of ms per write and tank
+        // download throughput. Enable it unless the user already set the property explicitly.
+        if (System.getProperty("sun.net.httpserver.nodelay") == null) {
+            System.setProperty("sun.net.httpserver.nodelay", "true");
         }
 
         try {
@@ -125,8 +134,13 @@ public final class HttpFileServer {
 
                 exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
                 exchange.sendResponseHeaders(200, Files.size(file));
-                try (OutputStream outputStream = exchange.getResponseBody()) {
-                    Files.copy(file, outputStream);
+                try (OutputStream outputStream = exchange.getResponseBody();
+                     InputStream inputStream = Files.newInputStream(file)) {
+                    byte[] buffer = new byte[TRANSFER_BUFFER_SIZE];
+                    int read;
+                    while ((read = inputStream.read(buffer)) != -1) {
+                        outputStream.write(buffer, 0, read);
+                    }
                 }
             } catch (Exception exception) {
                 LoggerUtils.warn("Rejected HTTP file request: " + exception.getMessage());

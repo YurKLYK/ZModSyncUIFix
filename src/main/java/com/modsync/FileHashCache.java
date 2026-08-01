@@ -6,7 +6,6 @@ import com.google.gson.reflect.TypeToken;
 
 import java.io.IOException;
 import java.io.Reader;
-import java.io.Writer;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -154,16 +153,17 @@ public final class FileHashCache {
     }
 
     private static void persist() {
+        // Serialize under lock (fast), then write to disk outside lock (slow I/O)
+        String json;
         synchronized (LOCK) {
-            try {
-                Path path = cachePath();
-                FileUtils.ensureParentExists(path);
-                try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-                    GSON.toJson(scopes, CACHE_TYPE, writer);
-                }
-            } catch (IOException exception) {
-                LoggerUtils.warn("Failed to persist ModSync file hash cache: " + exception.getMessage());
-            }
+            json = GSON.toJson(scopes, CACHE_TYPE);
+        }
+        try {
+            Path path = cachePath();
+            FileUtils.ensureParentExists(path);
+            Files.writeString(path, json, StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            LoggerUtils.warn("Failed to persist ModSync file hash cache: " + exception.getMessage());
         }
     }
 

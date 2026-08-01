@@ -10,6 +10,8 @@ public class ManifestEntry {
     private boolean required;
     private boolean restartRequired;
     private String downloadUrl;
+    /** When true, client skips hash/size check and only verifies the file exists by path. */
+    private boolean matchByNameOnly;
 
     public ManifestEntry() {
     }
@@ -102,6 +104,14 @@ public class ManifestEntry {
 
     public void setDownloadUrl(String downloadUrl) {
         this.downloadUrl = downloadUrl;
+    }
+
+    public boolean isMatchByNameOnly() {
+        return matchByNameOnly;
+    }
+
+    public void setMatchByNameOnly(boolean matchByNameOnly) {
+        this.matchByNameOnly = matchByNameOnly;
     }
 
     public String getIdentityKey() {

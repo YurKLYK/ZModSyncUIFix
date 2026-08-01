@@ -37,6 +37,7 @@ public final class ConfigManager {
     private static final ForgeConfigSpec.BooleanValue USE_TEMP_FILES;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> SKIP_FILE_EXTENSIONS;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> SYNC_FOLDERS;
+    private static final ForgeConfigSpec.ConfigValue<List<? extends String>> NAME_ONLY_MATCH_PATHS;
     private static final ForgeConfigSpec.BooleanValue LOG_TO_FILE;
     private static final ForgeConfigSpec.ConfigValue<String> LOG_FILE;
 
@@ -78,6 +79,9 @@ public final class ConfigManager {
                     "sync_repo/optional_client",
                     "tacz"
                 ), value -> value instanceof String);
+
+        NAME_ONLY_MATCH_PATHS = builder.defineList("name_only_match_paths",
+                List.of("tacz"), value -> value instanceof String);
 
         LOG_TO_FILE = builder.define("log_to_file", true);
         LOG_FILE = builder.define("log_file", "logs/modsync.log");
@@ -177,6 +181,10 @@ public final class ConfigManager {
         return SYNC_FOLDERS.get().stream().map(String::valueOf).toList();
     }
 
+    public static List<String> nameOnlyMatchPaths() {
+        return NAME_ONLY_MATCH_PATHS.get().stream().map(String::valueOf).toList();
+    }
+
     public static boolean logToFile() {
         return LOG_TO_FILE.get();
     }
@@ -215,6 +223,7 @@ public final class ConfigManager {
             USE_TEMP_FILES.set(fileConfig.getOrElse("use_temp_files", USE_TEMP_FILES.get()));
             SKIP_FILE_EXTENSIONS.set(asStringList(fileConfig.getOrElse("skip_file_extensions", SKIP_FILE_EXTENSIONS.get())));
             SYNC_FOLDERS.set(asStringList(fileConfig.getOrElse("sync_folders", SYNC_FOLDERS.get())));
+            NAME_ONLY_MATCH_PATHS.set(asStringList(fileConfig.getOrElse("name_only_match_paths", NAME_ONLY_MATCH_PATHS.get())));
             LOG_TO_FILE.set(fileConfig.getOrElse("log_to_file", LOG_TO_FILE.get()));
             LOG_FILE.set(fileConfig.getOrElse("log_file", LOG_FILE.get()));
         }

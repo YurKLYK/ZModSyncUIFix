@@ -44,6 +44,9 @@ public final class SyncComparator {
         if (clientEntry == null) {
             return ComparisonResult.MISSING;
         }
+        if (serverEntry.isMatchByNameOnly()) {
+            return ComparisonResult.MATCHES;
+        }
         if (clientEntry.getFileSize() != serverEntry.getFileSize()) {
             return ComparisonResult.SIZE_CHANGED;
         }

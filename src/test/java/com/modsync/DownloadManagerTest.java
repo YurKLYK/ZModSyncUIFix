@@ -73,6 +73,20 @@ class DownloadManagerTest {
     }
 
     @Test
+    void hasSufficientDiskSpaceAllowsSmallRequiredSize() {
+        ManifestEntry entry = new ManifestEntry(CategoryType.MOD, "mods/example.jar", "example.jar", 16L, "abc", true, true, "");
+
+        assertTrue(DownloadManager.hasSufficientDiskSpace(List.of(entry), ignored -> tempDir.resolve("example.jar")));
+    }
+
+    @Test
+    void hasSufficientDiskSpaceRejectsImpossiblyLargeRequiredSize() {
+        ManifestEntry entry = new ManifestEntry(CategoryType.MOD, "mods/example.jar", "example.jar", Long.MAX_VALUE / 2, "abc", true, true, "");
+
+        assertFalse(DownloadManager.hasSufficientDiskSpace(List.of(entry), ignored -> tempDir.resolve("example.jar")));
+    }
+
+    @Test
     void finalizeDownloadMovesVerifiedTempFileIntoTarget() throws Exception {
         Path downloadFile = tempDir.resolve("example.jar.modsync.tmp");
         Path targetFile = tempDir.resolve("example.jar");

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public final class NetworkHandler {
     private static final String PROTOCOL_VERSION = "1";
@@ -120,35 +121,40 @@ public final class NetworkHandler {
         if (json == null) {
             return;
         }
-        List<ManifestEntry> serverSuggested = ManifestGenerator.entriesFromJson(json);
-        ManifestData manifestData = ModSync.getLastManifest();
-        String serverId = ClientSyncContext.getCurrentServerId();
-        List<ManifestEntry> localEntries = ServerSyncStatusCache.getCachedOrScanLocalEntries(serverId);
-        if (manifestData != null) {
-            SyncCleanupManager.cleanupObsoleteManagedFiles(serverId, manifestData, localEntries);
-        }
-        HandshakeManifestPlanner.StartDownloadPlan plan =
-                HandshakeManifestPlanner.buildStartDownloadPlan(serverSuggested, manifestData, localEntries);
+        // Capture game-thread state before going async
+        final ManifestData manifestData = ModSync.getLastManifest();
+        final String serverId = ClientSyncContext.getCurrentServerId();
 
-        if (plan.alreadySynchronized()) {
-            LoggerUtils.info("Client is already synchronized");
-            if (plan.saveManagedManifest()) {
-                SyncCleanupManager.saveManagedManifest(serverId, manifestData);
+        // File scan, hashing, and cleanup are I/O-heavy — run off the game thread
+        CompletableFuture.runAsync(() -> {
+            List<ManifestEntry> serverSuggested = ManifestGenerator.entriesFromJson(json);
+            List<ManifestEntry> localEntries = ServerSyncStatusCache.getCachedOrScanLocalEntries(serverId);
+            if (manifestData != null) {
+                SyncCleanupManager.cleanupObsoleteManagedFiles(serverId, manifestData, localEntries);
             }
-            return;
-        }
+            HandshakeManifestPlanner.StartDownloadPlan plan =
+                    HandshakeManifestPlanner.buildStartDownloadPlan(serverSuggested, manifestData, localEntries);
 
-        LoggerUtils.info("Client starting download of " + plan.requiredEntries().size() + " files");
-        ensureProgressScreenVisible();
-        DownloadManager.getInstance().startDownloads(plan.requiredEntries(),
-                () -> {
-                    if (!PreJoinSyncManager.verifyDownloadedEntries(serverId, plan.requiredEntries())) {
-                        return;
-                    }
-                    if (plan.saveManagedManifest()) {
-                        SyncCleanupManager.saveManagedManifest(serverId, manifestData);
-                    }
-                });
+            if (plan.alreadySynchronized()) {
+                LoggerUtils.info("Client is already synchronized");
+                if (plan.saveManagedManifest()) {
+                    SyncCleanupManager.saveManagedManifest(serverId, manifestData);
+                }
+                return;
+            }
+
+            LoggerUtils.info("Client starting download of " + plan.requiredEntries().size() + " files");
+            ensureProgressScreenVisible();
+            DownloadManager.getInstance().startDownloads(plan.requiredEntries(),
+                    () -> {
+                        if (!PreJoinSyncManager.verifyDownloadedEntries(serverId, plan.requiredEntries())) {
+                            return;
+                        }
+                        if (plan.saveManagedManifest()) {
+                            SyncCleanupManager.saveManagedManifest(serverId, manifestData);
+                        }
+                    });
+        });
     }
 
     private static void ensureProgressScreenVisible() {
@@ -236,6 +242,9 @@ public final class NetworkHandler {
         if (ConfigManager.autoKickOnHandshakeTimeout()) {
             LoggerUtils.warn(timeoutMessage + " Auto-kicking is enabled.");
             HANDSHAKE_TRACKER.clear(player.getUUID());
+            synchronized (CLIENT_FILE_CHUNKS) {
+                CLIENT_FILE_CHUNKS.remove(player.getUUID());
+            }
             player.connection.disconnect(Component.literal(REQUIRED_MOD_KICK_MESSAGE));
             return;
         }

@@ -35,7 +35,8 @@ public final class PreJoinSyncManager {
         SyncIssueState.clear();
         ClientSyncContext.setCurrentServerId(serverData.ip);
         LoggerUtils.info("Selected server: " + serverData.name + " (" + serverData.ip + ")");
-        minecraft.setScreen(new SyncProgressScreen(returnScreen));
+        minecraft.setScreen(new SyncProgressScreen(returnScreen, false,
+                () -> continueConnecting(minecraft, returnScreen, serverData)));
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -49,7 +50,11 @@ public final class PreJoinSyncManager {
                 ModSync.setLastManifest(manifest);
                 LoggerUtils.info("Manifest received: " + manifest.getEntries().size() + " files");
 
-                List<ManifestEntry> localEntries = ServerSyncStatusCache.getCachedOrScanLocalEntries(serverData.ip);
+                // Always rescan on the actual join decision (rather than reusing the up-to-120s-old
+                // status-badge cache) so files changed/added outside ModSync are picked up immediately
+                // and the player isn't incorrectly told to re-download mods that are already in place.
+                List<ManifestEntry> localEntries = ClientFileScanner.scanLocalFiles(serverData.ip);
+                ServerSyncStatusCache.cacheLocalEntries(serverData.ip, localEntries);
                 SyncCleanupManager.cleanupObsoleteManagedFiles(serverData.ip, manifest, localEntries);
                 PreJoinSyncPlan plan = buildSyncPlan(localEntries, manifest, connectAfterSync, allowDownloads);
                 LoggerUtils.info("Pre-join sync found " + plan.requiredEntries().size() + " files to download");
@@ -57,7 +62,7 @@ public final class PreJoinSyncManager {
                 if (plan.alreadySynchronized()) {
                     LoggerUtils.info("Client is already synchronized");
                     SyncCleanupManager.saveManagedManifest(serverData.ip, manifest);
-                    cacheCurrentState(serverData.ip);
+                    // localEntries already cached above; no need to re-scan
                     ServerSyncStatusCache.requestRefresh(serverData);
                     if (plan.continueImmediately()) {
                         continueConnecting(minecraft, returnScreen, serverData);

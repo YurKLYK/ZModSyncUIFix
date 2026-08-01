@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 public final class ManagedStateStore {
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> SAVE_LOCKS = new java.util.concurrent.ConcurrentHashMap<>();
     private static Path stateRootOverride;
 
     private ManagedStateStore() {
@@ -35,12 +36,15 @@ public final class ManagedStateStore {
             return;
         }
 
-        Path file = stateFile(serverId);
-        try {
-            FileUtils.ensureParentExists(file);
-            Files.writeString(file, ManifestGenerator.entriesToJson(entries), StandardCharsets.UTF_8);
-        } catch (IOException exception) {
-            LoggerUtils.error("Failed to save managed sync state for " + serverId, exception);
+        Object lock = SAVE_LOCKS.computeIfAbsent(serverId, k -> new Object());
+        synchronized (lock) {
+            Path file = stateFile(serverId);
+            try {
+                FileUtils.ensureParentExists(file);
+                Files.writeString(file, ManifestGenerator.entriesToJson(entries), StandardCharsets.UTF_8);
+            } catch (IOException exception) {
+                LoggerUtils.error("Failed to save managed sync state for " + serverId, exception);
+            }
         }
     }
 

@@ -11,6 +11,7 @@ import java.util.List;
 
 public final class ActiveModProfileStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Object SAVE_LOCK = new Object();
 
     private ActiveModProfileStore() {
     }
@@ -32,12 +33,14 @@ public final class ActiveModProfileStore {
 
     public static void save(String serverId, List<ManifestEntry> entries) {
         ActiveProfile profile = new ActiveProfile(serverId == null ? "" : serverId.trim(), entries == null ? List.of() : List.copyOf(entries));
-        Path file = stateFile();
-        try {
-            FileUtils.ensureParentExists(file);
-            Files.writeString(file, GSON.toJson(profile), StandardCharsets.UTF_8);
-        } catch (IOException exception) {
-            LoggerUtils.error("Failed to save active mod profile", exception);
+        synchronized (SAVE_LOCK) {
+            Path file = stateFile();
+            try {
+                FileUtils.ensureParentExists(file);
+                Files.writeString(file, GSON.toJson(profile), StandardCharsets.UTF_8);
+            } catch (IOException exception) {
+                LoggerUtils.error("Failed to save active mod profile", exception);
+            }
         }
     }
 

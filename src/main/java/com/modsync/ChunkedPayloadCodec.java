@@ -21,12 +21,17 @@ final class ChunkedPayloadCodec {
     }
 
     static final class ChunkAccumulator {
+        // Bounds are generous for any real manifest/file-list payload but stop a malicious or
+        // buggy peer from claiming an unbounded chunk count/size and exhausting heap memory.
+        private static final int MAX_CHUNKS = 20_000;
+        private static final int MAX_TOTAL_LENGTH = 64 * 1024 * 1024;
+
         private int expectedChunks;
         private int nextChunkIndex;
         private final StringBuilder builder = new StringBuilder();
 
         String accept(int chunkIndex, int totalChunks, String payload) {
-            if (totalChunks <= 0 || chunkIndex < 0 || chunkIndex >= totalChunks) {
+            if (totalChunks <= 0 || totalChunks > MAX_CHUNKS || chunkIndex < 0 || chunkIndex >= totalChunks) {
                 reset();
                 return null;
             }
@@ -36,6 +41,12 @@ final class ChunkedPayloadCodec {
                 expectedChunks = totalChunks;
                 nextChunkIndex = 0;
             } else if (expectedChunks != totalChunks || chunkIndex != nextChunkIndex) {
+                reset();
+                return null;
+            }
+
+            int payloadLength = payload == null ? 0 : payload.length();
+            if (builder.length() + payloadLength > MAX_TOTAL_LENGTH) {
                 reset();
                 return null;
             }

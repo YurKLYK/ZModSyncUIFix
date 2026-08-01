@@ -60,4 +60,15 @@ class ChunkedPayloadCodecTest {
         assertNull(accumulator.accept(0, 2, "fresh-"));
         assertEquals("fresh-payload", accumulator.accept(1, 2, "payload"));
     }
+
+    @Test
+    void accumulatorRejectsAbsurdlyLargeDeclaredChunkCount() {
+        ChunkedPayloadCodec.ChunkAccumulator accumulator = new ChunkedPayloadCodec.ChunkAccumulator();
+
+        assertNull(accumulator.accept(0, Integer.MAX_VALUE, "abc"));
+        // The accumulator must not have latched onto the bogus sequence; a legitimate
+        // sequence should still work afterwards.
+        assertNull(accumulator.accept(0, 2, "fresh-"));
+        assertEquals("fresh-payload", accumulator.accept(1, 2, "payload"));
+    }
 }

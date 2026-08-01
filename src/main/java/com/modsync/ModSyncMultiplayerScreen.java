@@ -27,8 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ModSyncMultiplayerScreen extends Screen {
     private static final int LIST_TOP = 32;
-    private static final int ROW_HEIGHT = 40; 
-    private static final int ICON_SIZE = 24;
+    private static final int ROW_HEIGHT = 36;
+    private static final int ICON_SIZE = 32;
     private static final int LIST_SIDE_PADDING = 6;
     private static final int LIST_SCROLLBAR_WIDTH = 6;
     private static final int BUTTON_HEIGHT = 20;
@@ -50,6 +50,7 @@ public class ModSyncMultiplayerScreen extends Screen {
 
     // ボタン配置
     private Button connectButton;
+    private Button joinNoSyncButton;
     private Button downloadButton; 
     private Button directButton;
     private Button addButton;
@@ -59,7 +60,7 @@ public class ModSyncMultiplayerScreen extends Screen {
     private Button backButton;
 
     public ModSyncMultiplayerScreen(Screen parent) {
-        super(Component.translatable("menu.multiplayer"));
+        super(Component.translatable("multiplayer.title"));
         this.parent = parent;
     }
 
@@ -84,7 +85,7 @@ public class ModSyncMultiplayerScreen extends Screen {
     }
 
     /**
-     * ボタンレイアウトの構築
+     * ボタンレイアウトの構築(公式のサーバー一覧画面と同じく、各段がリスト幅いっぱいに広がる横並び)
      */
     private void buildLayout() {
         clearWidgets();
@@ -93,8 +94,8 @@ public class ModSyncMultiplayerScreen extends Screen {
         listWidth = Math.max(260, width - 48);
         listRight = listLeft + listWidth;
 
-        int row2Y = height - BOTTOM_MARGIN - BUTTON_HEIGHT; 
-        int row1Y = row2Y - BUTTON_SPACING - BUTTON_HEIGHT; 
+        int row2Y = height - BOTTOM_MARGIN - BUTTON_HEIGHT;
+        int row1Y = row2Y - BUTTON_SPACING - BUTTON_HEIGHT;
 
         listBottom = row1Y - LIST_TO_BUTTONS_GAP;
 
@@ -102,37 +103,36 @@ public class ModSyncMultiplayerScreen extends Screen {
         listWidget = new ServerBrowserList(minecraft, listWidth, listHeight, LIST_TOP, listBottom, ROW_HEIGHT, listLeft);
         addRenderableWidget(listWidget);
 
-        int buttonSpacing = 4;
-
-        // --- 1段目: 4つのボタン (Join, Download Mods, Direct, Add) ---
-        int row1ButtonCount = 4;
-        int row1TotalSpacing = buttonSpacing * (row1ButtonCount - 1);
+        // --- 1段目: Select / Join(No Sync) / Download Mods(ModSync独自) / Direct / Add ---
+        int row1ButtonCount = 5;
+        int row1TotalSpacing = BUTTON_SPACING * (row1ButtonCount - 1);
         int row1BtnW = (listWidth - row1TotalSpacing) / row1ButtonCount;
-        row1BtnW = Math.min(100, row1BtnW);
         int row1StartX = (width - (row1BtnW * row1ButtonCount + row1TotalSpacing)) / 2;
 
         connectButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.select"), button -> connectSelected())
             .bounds(row1StartX, row1Y, row1BtnW, BUTTON_HEIGHT)
             .build());
 
+        joinNoSyncButton = addRenderableWidget(Button.builder(LanguageManager.component("modsync.join_nosync"), button -> joinSkipSync())
+            .bounds(row1StartX + (row1BtnW + BUTTON_SPACING), row1Y, row1BtnW, BUTTON_HEIGHT)
+            .build());
+
         downloadButton = addRenderableWidget(Button.builder(Component.translatable("modsync.download_button").copy().withStyle(ChatFormatting.GOLD), button -> downloadSelected())
-            .bounds(row1StartX + (row1BtnW + buttonSpacing), row1Y, row1BtnW, BUTTON_HEIGHT)
+            .bounds(row1StartX + (row1BtnW + BUTTON_SPACING) * 2, row1Y, row1BtnW, BUTTON_HEIGHT)
             .build());
 
         directButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.direct"), button -> directConnect())
-            .bounds(row1StartX + (row1BtnW + buttonSpacing) * 2, row1Y, row1BtnW, BUTTON_HEIGHT)
+            .bounds(row1StartX + (row1BtnW + BUTTON_SPACING) * 3, row1Y, row1BtnW, BUTTON_HEIGHT)
             .build());
 
         addButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.add"), button -> addServer())
-            .bounds(row1StartX + (row1BtnW + buttonSpacing) * 3, row1Y, row1BtnW, BUTTON_HEIGHT)
+            .bounds(row1StartX + (row1BtnW + BUTTON_SPACING) * 4, row1Y, row1BtnW, BUTTON_HEIGHT)
             .build());
 
-
-        // --- 2段目: 4つのボタン (Edit, Delete, Refresh, Back) ---
+        // --- 2段目: Edit / Delete / Refresh / Back(公式と同じ4つ) ---
         int row2ButtonCount = 4;
-        int row2TotalSpacing = buttonSpacing * (row2ButtonCount - 1);
+        int row2TotalSpacing = BUTTON_SPACING * (row2ButtonCount - 1);
         int row2BtnW = (listWidth - row2TotalSpacing) / row2ButtonCount;
-        row2BtnW = Math.min(100, row2BtnW);
         int row2StartX = (width - (row2BtnW * row2ButtonCount + row2TotalSpacing)) / 2;
 
         editButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.edit"), button -> editSelected())
@@ -140,15 +140,15 @@ public class ModSyncMultiplayerScreen extends Screen {
             .build());
 
         deleteButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.delete"), button -> deleteSelected())
-            .bounds(row2StartX + (row2BtnW + buttonSpacing), row2Y, row2BtnW, BUTTON_HEIGHT)
+            .bounds(row2StartX + (row2BtnW + BUTTON_SPACING), row2Y, row2BtnW, BUTTON_HEIGHT)
             .build());
 
         refreshButton = addRenderableWidget(Button.builder(Component.translatable("selectServer.refresh"), button -> refreshServers())
-            .bounds(row2StartX + (row2BtnW + buttonSpacing) * 2, row2Y, row2BtnW, BUTTON_HEIGHT)
+            .bounds(row2StartX + (row2BtnW + BUTTON_SPACING) * 2, row2Y, row2BtnW, BUTTON_HEIGHT)
             .build());
 
         backButton = addRenderableWidget(Button.builder(Component.translatable("gui.back"), button -> onClose())
-            .bounds(row2StartX + (row2BtnW + buttonSpacing) * 3, row2Y, row2BtnW, BUTTON_HEIGHT)
+            .bounds(row2StartX + (row2BtnW + BUTTON_SPACING) * 3, row2Y, row2BtnW, BUTTON_HEIGHT)
             .build());
 
         updateButtons();
@@ -213,7 +213,17 @@ public class ModSyncMultiplayerScreen extends Screen {
             return;
         }
         ServerSyncStatusCache.markDirty(entry.serverData);
-        PreJoinSyncManager.startForServer(entry.serverData, this, true, false);
+        PreJoinSyncManager.startForServer(entry.serverData, this, true, true);
+    }
+
+    private void joinSkipSync() {
+        if (listWidget == null) return;
+        ServerEntry entry = listWidget.getSelected();
+        if (entry == null) return;
+        net.minecraft.client.gui.screens.ConnectScreen.startConnecting(
+                this, minecraft,
+                net.minecraft.client.multiplayer.resolver.ServerAddress.parseString(entry.serverData.ip),
+                entry.serverData, false);
     }
 
     private void downloadSelected() {
@@ -243,7 +253,7 @@ public class ModSyncMultiplayerScreen extends Screen {
         minecraft.setScreen(new DirectJoinServerScreen(this, accepted -> {
             if (accepted) {
                 ServerSyncStatusCache.markDirty(serverData);
-                PreJoinSyncManager.startForServer(serverData, this, true, false);
+                PreJoinSyncManager.startForServer(serverData, this, true, true);
             } else {
                 minecraft.setScreen(this);
             }
@@ -294,6 +304,7 @@ public class ModSyncMultiplayerScreen extends Screen {
         ServerEntry entry = listWidget == null ? null : listWidget.getSelected();
         boolean hasSelection = entry != null;
         connectButton.active = hasSelection;
+        joinNoSyncButton.active = hasSelection;
         downloadButton.active = hasSelection;
         editButton.active = hasSelection;
         deleteButton.active = hasSelection;
@@ -320,26 +331,23 @@ public class ModSyncMultiplayerScreen extends Screen {
         // 1. 背景(Dirt)
         renderBackground(guiGraphics);
 
-        // 2. サーバーリスト背後の透過ボックス
-        guiGraphics.fill(listLeft - 2, LIST_TOP - 2, listRight + 2, listBottom + 2, 0x80000000);
-
-        // 3. 中央タイトル
+        // 2. 中央タイトル(公式のサーバー一覧画面と同じ位置)
         guiGraphics.drawCenteredString(font, title, width / 2, 12, 0xFFFFFF);
 
         if (serverList.size() == 0) {
             guiGraphics.drawCenteredString(font, LanguageManager.component("modsync.multiplayer.empty"), width / 2, LIST_TOP + (listBottom - LIST_TOP) / 2 - 10, 0xCFCFCF);
         }
 
-        // 4. 先にリスト単体の中身（スクロールされるサーバー項目群）を描画
+        // 3. 先にリスト単体の中身（スクロールされるサーバー項目群）を描画
         if (listWidget != null) {
             listWidget.render(guiGraphics, mouseX, mouseY, partialTick);
         }
 
-        // 5. 【ココが重要】上下の暗転グラデーションを「ボタンより奥」に描画
+        // 4. 【ココが重要】上下の暗転グラデーションを「ボタンより奥」に描画(公式と同じ、リストを囲う箱は描かない)
         guiGraphics.fillGradient(0, 0, width, LIST_TOP, 0xFF000000, 0x00000000);
         guiGraphics.fillGradient(0, listBottom, width, height, 0x00000000, 0xFF000000);
 
-        // 6. 最後に super.render を呼ぶことで、すべての登録ボタンが一番手前のレイヤーに「明るく」描画されます
+        // 5. 最後に super.render を呼ぶことで、すべての登録ボタンが一番手前のレイヤーに「明るく」描画されます
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 
